@@ -1,3 +1,11 @@
+# VS
+.vs
+tmp
+*.iobj
+*.pdb
+*.ipdb
+
+
 # Prerequisites
 *.d
 
