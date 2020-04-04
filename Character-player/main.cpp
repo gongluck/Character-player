@@ -43,7 +43,7 @@ static void display(void* data, void* id)
     COORD pos = { 0 };
     SetConsoleCursorPosition(hConsoleOutput, pos);
 
-    static char buf[HEIGHT * (WIDTH + 2) +1] = { 0 };
+    static char buf[HEIGHT * (WIDTH + 2) + 1] = { 0 };
     RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(out_buffer);
     for (int i = 0; i < HEIGHT; ++i)
     {
@@ -59,11 +59,13 @@ static void display(void* data, void* id)
     puts(buf);
 }
 
-int main()
+int main(int argc, char** argv)
 {
     libvlc_instance_t* inst_ = nullptr;
     libvlc_media_t* media_ = nullptr;
     libvlc_media_player_t* player_ = nullptr;
+    libvlc_media_list_t* list_ = nullptr;
+    libvlc_media_list_player_t* plist_ = nullptr;
     int ret = 0;
 
     HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -74,8 +76,8 @@ int main()
 
     inst_ = libvlc_new(0, nullptr);
     CHECKEQUALRET(inst_, nullptr);
+    media_ = libvlc_media_new_path(inst_, argc <= 1 ? "badapple.mp4" : argv[1]);
 
-    media_ = libvlc_media_new_path(inst_, "badapple.mp4");
     CHECKEQUALRET(media_, nullptr);
 
     player_ = libvlc_media_player_new_from_media(media_);
@@ -84,6 +86,13 @@ int main()
     libvlc_video_set_callbacks(player_, lock, unlock, display, 0);
     libvlc_video_set_format(player_, "RGBA", WIDTH, HEIGHT, WIDTH * 4);
     //libvlc_media_player_set_hwnd(player_, GetDesktopWindow());
+    
+    // play loop
+    list_ = libvlc_media_list_new(inst_);
+    plist_ = libvlc_media_list_player_new(inst_);
+    libvlc_media_list_player_set_media_list(plist_, list_);
+    libvlc_media_list_player_set_media_player(plist_, player_);
+    libvlc_media_list_player_set_playback_mode(plist_, libvlc_playback_mode_loop);
 
     ret = libvlc_media_player_play(player_);
     CHECKNEQUALRET(ret, 0);
@@ -91,6 +100,16 @@ int main()
     std::cin.get();
 
 END:
+    if (plist_ != nullptr)
+    {
+        libvlc_media_list_player_release(plist_);
+        plist_ = nullptr;
+    }
+    if (list_ != nullptr)
+    {
+        libvlc_media_list_release(list_);
+        list_ = nullptr;
+    }
     if (player_ != nullptr)
     {
         libvlc_media_player_stop(player_);
