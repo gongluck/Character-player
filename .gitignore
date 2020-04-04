@@ -1,6 +1,7 @@
 # VS
 .vs
 tmp
+Debug
 *.iobj
 *.pdb
 *.ipdb
@@ -22,7 +23,7 @@ tmp
 # Compiled Dynamic libraries
 *.so
 *.dylib
-*.dll
+#*.dll
 
 # Fortran module files
 *.mod
@@ -32,7 +33,7 @@ tmp
 *.lai
 *.la
 *.a
-*.lib
+#*.lib
 
 # Executables
 *.exe

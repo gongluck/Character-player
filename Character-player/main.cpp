@@ -25,8 +25,8 @@ if(ret != compare)\
     goto END;\
 }
 
-const int WIDTH = 80;
-const int HEIGHT = 40;
+const int WIDTH = 400;
+const int HEIGHT = 120;
 char in_buffer[WIDTH * HEIGHT * 4];
 char out_buffer[WIDTH * HEIGHT * 4];
 static void* lock(void* data, void** p_pixels)
@@ -37,23 +37,13 @@ static void* lock(void* data, void** p_pixels)
 static void unlock(void* data, void* id, void* const* p_pixels)
 {
 }
-
 static void display(void* data, void* id)
 {
-    /*static std::ofstream file("save.rgba", std::ios::binary | std::ios::trunc);
-    file.write(out_buffer, sizeof(out_buffer));
-    static int n = 0;
-    if (n++ == 900)
-    {
-        static std::ofstream filen("saven.rgba", std::ios::binary | std::ios::trunc);
-        filen.write(out_buffer, sizeof(out_buffer));
-        filen.close();
-    }*/
-
     HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD pos = {0};
+    COORD pos = { 0 };
     SetConsoleCursorPosition(hConsoleOutput, pos);
 
+    static char buf[HEIGHT * (WIDTH + 2)] = { 0 };
     RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(out_buffer);
     for (int i = 0; i < HEIGHT; ++i)
     {
@@ -61,48 +51,24 @@ static void display(void* data, void* id)
         {
             auto point = rgba[WIDTH * i + j];
             auto light = (point.rgbRed + point.rgbGreen + point.rgbBlue) / 3;
-            if (light > 127)
-            {
-                std::cout.put('#');
-            }
-            else
-            {
-                std::cout.put(' ');
-            }
+            buf[i * (WIDTH + 2) + j] = light > 127 ? '*' : ' ';
         }
-        std::cout.put('\r');
-        std::cout.put('\n');
+        buf[i * (WIDTH + 2) + WIDTH] = '\r';
+        buf[i * (WIDTH + 2) + WIDTH + 1] = '\n';
     }
+    puts(buf);
 }
 
 int main()
 {
-    /*std::ifstream in("saven.rgba", std::ios::binary);
-    in.read(in_buffer, sizeof(in_buffer));
-    RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(in_buffer);
-    for (int i = 0; i < HEIGHT; ++i)
-    {
-        for (int j = 0; j < WIDTH; ++j)
-        {
-            auto point = rgba[WIDTH * i + j];
-            auto light = (point.rgbRed + point.rgbGreen + point.rgbBlue) / 3;
-            if (light > 127)
-            {
-                std::cout.put('#');
-            }
-            else
-            {
-                std::cout.put(' ');
-            }
-        }
-        std::cout.put('\r');
-        std::cout.put('\n');
-    }*/
-
     libvlc_instance_t* inst_ = nullptr;
     libvlc_media_t* media_ = nullptr;
     libvlc_media_player_t* player_ = nullptr;
     int ret = 0;
+
+    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    SMALL_RECT rc = { 0,0, WIDTH + 3, HEIGHT + 3 };
+    SetConsoleWindowInfo(hConsoleOutput, true, &rc);
 
     libvlc_log_close(nullptr);
 
