@@ -43,7 +43,7 @@ static void display(void* data, void* id)
     COORD pos = { 0 };
     SetConsoleCursorPosition(hConsoleOutput, pos);
 
-    static char buf[HEIGHT * (WIDTH + 2)] = { 0 };
+    static char buf[HEIGHT * (WIDTH + 2) +1] = { 0 };
     RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(out_buffer);
     for (int i = 0; i < HEIGHT; ++i)
     {
