@@ -29,13 +29,16 @@ if(ret != compare)\
 static int WIDTH = 200;
 static int HEIGHT = 50;
 static char* out_buffer = nullptr;
+static char* tmp_buffer = nullptr;
 static char* print_buffer = nullptr;
 std::atomic<bool> atomiclock;
-bool gotframe = false;
+std::atomic<bool> gotframe = false;
 static void* lock(void* data, void** p_pixels)
 {
     while (atomiclock)
-        ;
+    {
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    }
     atomiclock = true;
     *p_pixels = out_buffer;
     return 0;
@@ -47,16 +50,22 @@ static void unlock(void* data, void* id, void* const* p_pixels)
 }
 static void display(/*void* data, void* id*/)
 {
+    atomiclock = true;
     if (!gotframe)
     {
+        atomiclock = false;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
         return;
     }
+    memcpy(tmp_buffer, out_buffer, HEIGHT * WIDTH * 4);
+    gotframe = false;
+    atomiclock = false;
 
     HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     COORD pos = { 0 };
     SetConsoleCursorPosition(hConsoleOutput, pos);
 
-    RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(out_buffer);
+    RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(tmp_buffer);
     for (int i = 0; i < HEIGHT; ++i)
     {
         for (int j = 0; j < WIDTH; ++j)
@@ -102,10 +111,10 @@ int main(int argc, char** argv)
         while (!exit)
         {
             while (atomiclock)
-                ;
-            atomiclock = true;
+            {
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
             display();
-            atomiclock = false;
         }
     });
 
@@ -116,6 +125,8 @@ int main(int argc, char** argv)
 
     out_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
     CHECKEQUALRET(out_buffer, nullptr);
+    tmp_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
+    CHECKEQUALRET(tmp_buffer, nullptr);
     print_buffer = static_cast<char*>(malloc(HEIGHT * (WIDTH + 2) + 1));
     CHECKEQUALRET(print_buffer, nullptr);
     print_buffer[HEIGHT * (WIDTH + 2)] = '\0';
@@ -183,5 +194,10 @@ END:
     {
         free(out_buffer);
         out_buffer = nullptr;
+    }
+    if (tmp_buffer != nullptr)
+    {
+        free(tmp_buffer);
+        tmp_buffer = nullptr;
     }
 }
