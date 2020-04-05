@@ -26,60 +26,6 @@ if(ret != compare)\
     goto END;\
 }
 
-static int WIDTH = 200;
-static int HEIGHT = 50;
-static char* out_buffer = nullptr;
-static char* tmp_buffer = nullptr;
-static char* print_buffer = nullptr;
-std::atomic<bool> atomiclock;
-std::atomic<bool> gotframe = false;
-static void* lock(void* data, void** p_pixels)
-{
-    while (atomiclock)
-    {
-        std::this_thread::sleep_for(std::chrono::microseconds(10));
-    }
-    atomiclock = true;
-    *p_pixels = out_buffer;
-    return 0;
-}
-static void unlock(void* data, void* id, void* const* p_pixels)
-{
-    atomiclock = false;
-    gotframe = true;
-}
-static void display(/*void* data, void* id*/)
-{
-    atomiclock = true;
-    if (!gotframe)
-    {
-        atomiclock = false;
-        std::this_thread::sleep_for(std::chrono::microseconds(10));
-        return;
-    }
-    memcpy(tmp_buffer, out_buffer, HEIGHT * WIDTH * 4);
-    gotframe = false;
-    atomiclock = false;
-
-    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD pos = { 0 };
-    SetConsoleCursorPosition(hConsoleOutput, pos);
-
-    RGBQUAD* rgba = reinterpret_cast<RGBQUAD*>(tmp_buffer);
-    for (int i = 0; i < HEIGHT; ++i)
-    {
-        for (int j = 0; j < WIDTH; ++j)
-        {
-            auto point = rgba[WIDTH * i + j];
-            auto light = (point.rgbRed + point.rgbGreen + point.rgbBlue) / 3;
-            print_buffer[i * (WIDTH + 2) + j] = light > 127 ? '*' : ' ';
-        }
-        print_buffer[i * (WIDTH + 2) + WIDTH] = '\r';
-        print_buffer[i * (WIDTH + 2) + WIDTH + 1] = '\n';
-    }
-    puts(print_buffer);
-}
-
 int main(int argc, char** argv)
 {
     libvlc_instance_t* inst_ = nullptr;
@@ -87,57 +33,19 @@ int main(int argc, char** argv)
     libvlc_media_player_t* player_ = nullptr;
     libvlc_media_list_t* list_ = nullptr;
     libvlc_media_list_player_t* plist_ = nullptr;
+    HWND wnd_ = reinterpret_cast<HWND>(GetDesktopWindow());
     int ret = 0;
-
-    std::cout << "Usage: Character-player [media file] [out width] [out height]" << std::endl;
-
-    if (argc >= 4)
-    {
-        WIDTH = atoi(argv[2]);
-        HEIGHT = atoi(argv[3]);
-    }
-
-    HANDLE hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    COORD size = { WIDTH + 4, HEIGHT + 5 };
-    SetConsoleScreenBufferSize(hConsoleOutput, size);
-    SMALL_RECT rc = { 0,0, WIDTH + 1, HEIGHT + 1 };
-    SetConsoleWindowInfo(hConsoleOutput, true, &rc);
-
-    libvlc_log_close(nullptr);
-
-    bool exit = false;
-    std::thread th([&]()
-    {
-        while (!exit)
-        {
-            while (atomiclock)
-            {
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
-            }
-            display();
-        }
-    });
 
     inst_ = libvlc_new(0, nullptr);
     CHECKEQUALRET(inst_, nullptr);
     media_ = libvlc_media_new_path(inst_, argc <= 1 ? "badapple.mp4" : argv[1]);
     CHECKEQUALRET(media_, nullptr);
 
-    out_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
-    CHECKEQUALRET(out_buffer, nullptr);
-    tmp_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
-    CHECKEQUALRET(tmp_buffer, nullptr);
-    print_buffer = static_cast<char*>(malloc(HEIGHT * (WIDTH + 2) + 1));
-    CHECKEQUALRET(print_buffer, nullptr);
-    print_buffer[HEIGHT * (WIDTH + 2)] = '\0';
-
     //player_ = libvlc_media_player_new_from_media(media_);
     player_ = libvlc_media_player_new(inst_);
     CHECKEQUALRET(player_, nullptr);
 
-    libvlc_video_set_callbacks(player_, lock, unlock, nullptr, 0);
-    libvlc_video_set_format(player_, "RGBA", WIDTH, HEIGHT, WIDTH * 4);
-    //libvlc_media_player_set_hwnd(player_, GetDesktopWindow());
+    libvlc_media_player_set_hwnd(player_, reinterpret_cast<void*>(wnd_));
     
     // play loop
     list_ = libvlc_media_list_new(inst_);
@@ -151,12 +59,6 @@ int main(int argc, char** argv)
     std::cin.get();
 
 END:
-    exit = true;
-    if (th.joinable())
-    {
-        th.join();
-    }
-
     if (player_ != nullptr)
     {
         libvlc_media_player_stop(player_);
@@ -183,21 +85,5 @@ END:
     {
         libvlc_release(inst_);
         inst_ = nullptr;
-    }
-
-    if (print_buffer != nullptr)
-    {
-        free(print_buffer);
-        print_buffer = nullptr;
-    }
-    if (out_buffer != nullptr)
-    {
-        free(out_buffer);
-        out_buffer = nullptr;
-    }
-    if (tmp_buffer != nullptr)
-    {
-        free(tmp_buffer);
-        tmp_buffer = nullptr;
     }
 }
