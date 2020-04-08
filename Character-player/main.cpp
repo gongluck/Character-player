@@ -27,6 +27,42 @@ if(ret != compare)\
     goto END;\
 }
 
+int getwindows(const TCHAR* classname,
+    const gprocess::WindowInfo& info,
+    std::vector<std::shared_ptr<gprocess::WindowInfo>>& result)
+{
+    std::vector<std::shared_ptr<gprocess::WindowInfo>> tmp;
+    TCHAR classname_[MAX_PATH] = { 0 };
+    for (int i = 0; i < info.childs.size(); ++i)
+    {
+        GetClassName(reinterpret_cast<HWND>(info.childs[i]->window), classname_, _countof(classname_));
+        if (_tcscmp(classname_, classname) == 0)
+        {
+            tmp.push_back(info.childs[i]);
+        }
+    }
+    for (const auto& each : tmp)
+    {
+        result.push_back(each);
+    }
+    return 0;
+}
+int getwindows(const TCHAR* classname,
+    const std::vector<std::shared_ptr<gprocess::WindowInfo>>& windows,
+    std::vector<std::shared_ptr<gprocess::WindowInfo>>& result)
+{
+    std::vector<std::shared_ptr<gprocess::WindowInfo>> tmp;
+    for (int i = 0; i < windows.size(); ++i)
+    {
+        getwindows(classname, *windows[i], tmp);
+    }
+    for (const auto& each : tmp)
+    {
+        result.push_back(each);
+    }
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     libvlc_instance_t* inst_ = nullptr;
@@ -35,26 +71,33 @@ int main(int argc, char** argv)
     libvlc_media_list_t* list_ = nullptr;
     libvlc_media_list_player_t* plist_ = nullptr;
     HWND wnd_ = nullptr;
-    TCHAR classname[MAX_PATH] = { 0 };
 
     std::vector<gprocess::ProcessInfo> result;
     gprocess::WindowInfo windowinfo;
+    std::vector<std::shared_ptr<gprocess::WindowInfo>> windows;
+    std::vector<std::shared_ptr<gprocess::WindowInfo>> tmpwindows;
     auto ret = gprocess::gethandle("Taskmgr.exe", result);
     CHECKNEQUALRET(ret, 0);
     windowinfo.processid = result[0].processid;
     ret = gprocess::getallwindows(&windowinfo);
     CHECKNEQUALRET(ret, 0);
 
-    for (int i = 0; i < windowinfo.childs.size(); ++i)
-    {
-        GetClassName(reinterpret_cast<HWND>(windowinfo.childs[i]->window), classname, _countof(classname));
-        if (_tcscmp(classname, TEXT("TaskManagerWindow")) == 0)
-        {
-            std::cout << windowinfo.childs[i] << std::endl;
-            wnd_ = reinterpret_cast<HWND>(windowinfo.childs[i]->window);
-        }
-    }
-    
+    ret = getwindows(TEXT("TaskManagerWindow"), windowinfo, windows);
+    CHECKNEQUALRET(ret, 0);
+    ret = getwindows(TEXT("NativeHWNDHost"), windows, tmpwindows);
+    CHECKNEQUALRET(ret, 0);
+    windows.clear();
+    windows.swap(tmpwindows);
+    ret = getwindows(TEXT("DirectUIHWND"), windows, tmpwindows);
+    CHECKNEQUALRET(ret, 0);
+    windows.clear();
+    windows.swap(tmpwindows);
+    ret = getwindows(TEXT("CvChartWindow"), windows, tmpwindows);
+    CHECKNEQUALRET(ret, 0);
+    CHECKEQUALRET(tmpwindows.size(), 0);
+
+    wnd_ = reinterpret_cast<HWND>(tmpwindows[tmpwindows.size() - 1]->window);
+
     inst_ = libvlc_new(0, nullptr);
     CHECKEQUALRET(inst_, nullptr);
     media_ = libvlc_media_new_path(inst_, argc <= 1 ? "badapple.mp4" : argv[1]);
@@ -65,7 +108,7 @@ int main(int argc, char** argv)
     CHECKEQUALRET(player_, nullptr);
 
     libvlc_media_player_set_hwnd(player_, reinterpret_cast<void*>(wnd_));
-    
+
     // play loop
     list_ = libvlc_media_list_new(inst_);
     plist_ = libvlc_media_list_player_new(inst_);
