@@ -28,6 +28,7 @@ if(ret != compare)\
 }
 
 static HWND WND = nullptr;
+static BYTE* PPBITMAPINFO = nullptr;
 static int WIDTH = 1920;
 static int HEIGHT = 1080;
 static char* out_buffer = nullptr;
@@ -45,21 +46,11 @@ static void unlock(void* data, void* id, void* const* p_pixels)
 
 static void display(void* data, void* id)
 {
-    auto bitmap = ::CreateBitmap(WIDTH, HEIGHT, 1, 32, out_buffer);
     auto wndDC = ::GetDC(WND);
-    auto memDC = ::CreateCompatibleDC(wndDC);
-    auto oldbitmap = static_cast<HBITMAP>(::SelectObject(memDC, bitmap));
-
-    auto size = ::GetDeviceCaps(wndDC, LOGPIXELSY);
-    auto is = ::IsProcessDPIAware();
-    auto set = SetProcessDPIAware();
-    ::RECT rect = { 0 };
-    ::GetClientRect(WND, &rect);
-    ::StretchBlt(wndDC, 0, 0, rect.right-rect.left, rect.bottom-rect.top, memDC, 0, 0, WIDTH, HEIGHT, SRCCOPY);
-
-    ::SelectObject(memDC, oldbitmap);
-    ::DeleteObject(bitmap);
-    ::DeleteDC(memDC);
+    RECT rect = { 0 };
+    ::GetWindowRect(WND, &rect);
+    ::StretchDIBits(wndDC, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+        0, 0, WIDTH, HEIGHT, out_buffer, reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO), DIB_RGB_COLORS, SRCCOPY);
     ::ReleaseDC(WND, wndDC);
 }
 
@@ -107,6 +98,9 @@ int main(int argc, char** argv)
     libvlc_media_list_t* list_ = nullptr;
     libvlc_media_list_player_t* plist_ = nullptr;
     HWND wnd_ = nullptr;
+    RGBQUAD* rgbp_ = nullptr;
+
+    auto set = SetProcessDPIAware();
 
     std::vector<gprocess::ProcessInfo> result;
     gprocess::WindowInfo windowinfo;
@@ -133,9 +127,31 @@ int main(int argc, char** argv)
     CHECKEQUALRET(tmpwindows.size(), 0);
 
     wnd_ = reinterpret_cast<HWND>(tmpwindows[tmpwindows.size() - 1]->window);
-    //wnd_ = (HWND)0x000E0786;
 
-    out_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
+    PPBITMAPINFO = static_cast<BYTE*>(malloc (sizeof(BITMAPINFOHEADER) + 256 * sizeof(RGBQUAD)));
+    CHECKEQUALRET(PPBITMAPINFO, nullptr);
+
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biWidth = WIDTH;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biHeight = -HEIGHT;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biPlanes = 1;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biBitCount = 8;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biCompression = BI_RGB;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biSizeImage = WIDTH * HEIGHT;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biXPelsPerMeter = 0;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biYPelsPerMeter = 0;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biClrUsed = 0;
+    reinterpret_cast<PBITMAPINFO>(PPBITMAPINFO)->bmiHeader.biClrImportant = 0;
+    rgbp_ = reinterpret_cast<RGBQUAD*>(PPBITMAPINFO + sizeof(BITMAPINFOHEADER));
+    for (int i = 0; i < 256; ++i, ++rgbp_) 
+    {
+        rgbp_->rgbBlue = i;
+        rgbp_->rgbGreen = i;
+        rgbp_->rgbRed = i;
+        rgbp_->rgbReserved = 0;
+    }
+
+    out_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH));
     CHECKEQUALRET(out_buffer, nullptr);
 
     inst_ = libvlc_new(0, nullptr);
@@ -148,7 +164,7 @@ int main(int argc, char** argv)
     CHECKEQUALRET(player_, nullptr);
 
     libvlc_video_set_callbacks(player_, lock, unlock, display, 0);
-    libvlc_video_set_format(player_, "RGBA", WIDTH, HEIGHT, WIDTH * 4);
+    libvlc_video_set_format(player_, "GREY", WIDTH, HEIGHT, WIDTH);
     //libvlc_media_player_set_hwnd(player_, reinterpret_cast<void*>(wnd_));
     WND = wnd_;
 
@@ -192,6 +208,11 @@ END:
         inst_ = nullptr;
     }
 
+    if (PPBITMAPINFO != nullptr)
+    {
+        free(PPBITMAPINFO);
+        PPBITMAPINFO = nullptr;
+    }
     if (out_buffer != nullptr)
     {
         free(out_buffer);
