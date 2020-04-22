@@ -27,6 +27,42 @@ if(ret != compare)\
     goto END;\
 }
 
+static HWND WND = nullptr;
+static int WIDTH = 1920;
+static int HEIGHT = 1080;
+static char* out_buffer = nullptr;
+static char* tmp_buffer = nullptr;
+static char* print_buffer = nullptr;
+static void* lock(void* data, void** p_pixels)
+{
+    *p_pixels = out_buffer;
+    return 0;
+}
+
+static void unlock(void* data, void* id, void* const* p_pixels)
+{
+}
+
+static void display(void* data, void* id)
+{
+    auto bitmap = ::CreateBitmap(WIDTH, HEIGHT, 1, 32, out_buffer);
+    auto wndDC = ::GetDC(WND);
+    auto memDC = ::CreateCompatibleDC(wndDC);
+    auto oldbitmap = static_cast<HBITMAP>(::SelectObject(memDC, bitmap));
+
+    auto size = ::GetDeviceCaps(wndDC, LOGPIXELSY);
+    auto is = ::IsProcessDPIAware();
+    auto set = SetProcessDPIAware();
+    ::RECT rect = { 0 };
+    ::GetClientRect(WND, &rect);
+    ::StretchBlt(wndDC, 0, 0, rect.right-rect.left, rect.bottom-rect.top, memDC, 0, 0, WIDTH, HEIGHT, SRCCOPY);
+
+    ::SelectObject(memDC, oldbitmap);
+    ::DeleteObject(bitmap);
+    ::DeleteDC(memDC);
+    ::ReleaseDC(WND, wndDC);
+}
+
 int getwindows(const TCHAR* classname,
     const gprocess::WindowInfo& info,
     std::vector<std::shared_ptr<gprocess::WindowInfo>>& result)
@@ -97,6 +133,10 @@ int main(int argc, char** argv)
     CHECKEQUALRET(tmpwindows.size(), 0);
 
     wnd_ = reinterpret_cast<HWND>(tmpwindows[tmpwindows.size() - 1]->window);
+    //wnd_ = (HWND)0x000E0786;
+
+    out_buffer = static_cast<char*>(malloc(HEIGHT * WIDTH * 4));
+    CHECKEQUALRET(out_buffer, nullptr);
 
     inst_ = libvlc_new(0, nullptr);
     CHECKEQUALRET(inst_, nullptr);
@@ -107,7 +147,10 @@ int main(int argc, char** argv)
     player_ = libvlc_media_player_new(inst_);
     CHECKEQUALRET(player_, nullptr);
 
-    libvlc_media_player_set_hwnd(player_, reinterpret_cast<void*>(wnd_));
+    libvlc_video_set_callbacks(player_, lock, unlock, display, 0);
+    libvlc_video_set_format(player_, "RGBA", WIDTH, HEIGHT, WIDTH * 4);
+    //libvlc_media_player_set_hwnd(player_, reinterpret_cast<void*>(wnd_));
+    WND = wnd_;
 
     // play loop
     list_ = libvlc_media_list_new(inst_);
@@ -147,5 +190,11 @@ END:
     {
         libvlc_release(inst_);
         inst_ = nullptr;
+    }
+
+    if (out_buffer != nullptr)
+    {
+        free(out_buffer);
+        out_buffer = nullptr;
     }
 }
